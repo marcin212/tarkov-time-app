@@ -14,6 +14,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@master
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
     - name: Build
       run: cargo +nightly build --verbose --release --package ss-tarkov-time --bin ss-tarkov-time
     - name: Upload artifact
