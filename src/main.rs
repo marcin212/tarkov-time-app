@@ -192,7 +192,7 @@ impl<APP, QUIT> App<APP, QUIT> where APP: FnMut(Mode), QUIT: Fn()
 {
     fn new(tick: u64, app_loop: APP, quit_remove: QUIT) -> Self {
         let mut tray = TrayItem::new(
-            "Tray Example",
+            "Tarkov Time",
             IconSource::Resource("tarkov-time-icon"),
         ).unwrap();
         tray.add_label("Tarkov Time").unwrap();
@@ -217,7 +217,7 @@ impl<APP, QUIT> App<APP, QUIT> where APP: FnMut(Mode), QUIT: Fn()
         tray.inner_mut().add_separator().unwrap();
 
         let quit_remove_tx = tx.clone();
-        tray.add_menu_item("Quit & Remove", move || {
+        tray.add_menu_item("Quit and Remove", move || {
             quit_remove_tx.send(Message::QuitWithRemove).unwrap();
         }).unwrap();
 
