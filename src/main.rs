@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::mpsc::{Receiver};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Utc};
 use reqwest;
@@ -185,7 +185,6 @@ struct App<APP: FnMut(Mode), QUIT: Fn()> {
     tick: u64,
     app_loop: APP,
     quit_remove: QUIT,
-    channel_tx: SyncSender<Message>,
     channel_rx: Receiver<Message>,
 }
 
@@ -237,8 +236,7 @@ impl<APP, QUIT> App<APP, QUIT> where APP: FnMut(Mode), QUIT: Fn()
             tick,
             app_loop,
             quit_remove,
-            channel_tx: tx,
-            channel_rx: rx,
+            channel_rx: rx
         };
     }
 
@@ -310,7 +308,7 @@ impl TarkovDetector {
         if now.duration_since(self.last_time).as_secs() > 10 {
            self.last_time = now;
             let mut is_running = false;
-            for_each_process(|id: u32, name: &Path| {
+            for_each_process(|_id: u32, name: &Path| {
                 if name.display().to_string().contains("EscapeFromTarkov.exe") {
                     is_running = true;
                 }
