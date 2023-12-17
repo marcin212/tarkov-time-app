@@ -1,0 +1,24 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+    
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@master
+    - name: Build
+      run: cargo build --verbose --release --package ss-tarkov-time --bin ss-tarkov-time
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ss-tarkov-time.exe
+        path: /target/release/ss-tarkov-time.exe
+        if-no-files-found: error
