@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@master
     - name: Build
-      run: cargo build --verbose --release --package ss-tarkov-time --bin ss-tarkov-time
+      run: cargo +nightly build --verbose --release --package ss-tarkov-time --bin ss-tarkov-time
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
