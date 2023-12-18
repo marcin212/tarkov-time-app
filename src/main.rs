@@ -1,134 +1,22 @@
 #![feature(fn_traits)]
 #![windows_subsystem = "windows"]
 
+mod data_structure;
+mod tarkov_time;
+mod game_sense_service;
+mod tarkov_detector;
+
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use chrono::{DateTime, Utc};
-use reqwest;
-use reqwest::blocking::Response;
-use serde::{Deserialize, Serialize};
+use std::time::{Duration };
 use tray_item::{IconSource, TrayItem};
+use crate::data_structure::{BindEventDefinition, CoreProps, DataField, Event, EventData, Game, GameMetadata, ScreenHandler, ScreenHandlerData, ScreenHandlerDataLine};
+use crate::game_sense_service::GameSenseService;
+use crate::tarkov_detector::TarkovDetector;
+use crate::tarkov_time::calculate_tarkov_time;
 
-use process_list::for_each_process;
-
-#[derive(Debug, Deserialize)]
-struct CoreProps {
-    address: String,
-}
-
-
-#[derive(Debug, Serialize)]
-struct GameMetadata {
-    game: String,
-    game_display_name: String,
-    developer: String,
-    deinitialize_timer_length_ms: i32,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all(serialize = "kebab-case"))]
-struct ScreenHandler {
-    device_type: String,
-    zone: String,
-    mode: String,
-    datas: Vec<ScreenHandlerData>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all(serialize = "kebab-case"))]
-struct ScreenHandlerDataLine {
-    has_text: bool,
-    context_frame_key: String,
-    wrap: i32,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all(serialize = "kebab-case"))]
-struct ScreenHandlerData {
-    lines: Vec<ScreenHandlerDataLine>,
-    icon_id: i32,
-}
-
-#[derive(Debug, Serialize)]
-struct BindEventDefinition {
-    game: String,
-    event: String,
-    icon_id: i32,
-    value_optional: bool,
-    handlers: Vec<ScreenHandler>,
-    data_fields: Vec<DataField>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all(serialize = "kebab-case"))]
-struct DataField {
-    context_frame_key: String,
-    label: String,
-}
-
-#[derive(Debug, Serialize)]
-struct Event {
-    game: String,
-    event: String,
-    data: EventData,
-}
-
-#[derive(Debug, Serialize)]
-struct Game {
-    game: String,
-}
-
-#[derive(Debug, Serialize)]
-struct EventData {
-    value: i32,
-    frame: HashMap<String, String>,
-}
-
-struct GameSenseService {
-    url: String,
-    client: reqwest::blocking::Client,
-}
-
-
-impl GameSenseService {
-    fn new(props: CoreProps) -> Self {
-        return Self {
-            url: format!("http://{}", props.address),
-            client: reqwest::blocking::Client::new(),
-        };
-    }
-
-    fn post(&self, path: String, body: String) -> reqwest::Result<Response> {
-        //println!("{}", format!("{}/{}", self.url, path));
-        //println!("{}", body);
-        return self.client.post(format!("{}/{}", self.url, path)).body(body).header("Content-Type", "application/json").send();
-    }
-
-    fn register_game(&self, game_metadata: GameMetadata) -> reqwest::Result<Response> {
-        return self.post("game_metadata".to_owned(), serde_json::to_string(&game_metadata).unwrap());
-    }
-
-    fn remove_game(&self, game: Game) -> reqwest::Result<Response> {
-        return self.post("remove_game".to_owned(), serde_json::to_string(&game).unwrap());
-    }
-
-    fn bind_game_event(&self, bind_event_definition: BindEventDefinition) -> reqwest::Result<Response> {
-        return self.post("bind_game_event".to_owned(), serde_json::to_string(&bind_event_definition).unwrap());
-    }
-
-    fn send_event(&self, event: Event) -> reqwest::Result<Response> {
-        return self.post("game_event".to_owned(), serde_json::to_string(&event).unwrap());
-    }
-}
-
-struct TarkovTime {
-    right_time: String,
-    left_time: String,
-}
 
 enum Message {
     Quit,
@@ -144,37 +32,6 @@ enum Mode {
     Disable,
     GameDetection,
 }
-
-
-fn hrs(num: u64) -> u64 {
-    return 60 * 60 * num;
-}
-
-fn real_time_to_tarkov_time(time: u64, left: bool) -> u64 {
-    let tarkov_ratio = 7;
-    let one_day = hrs(24);
-    let russia = hrs(3);
-    let offset = if left { 0 } else { hrs(12) } + russia;
-
-    return (offset + (time * tarkov_ratio)) % one_day;
-}
-
-
-fn calculate_tarkov_time() -> TarkovTime {
-    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-    let right_time = real_time_to_tarkov_time(now, false);
-    let left_time = real_time_to_tarkov_time(now, true);
-
-    let right_time = UNIX_EPOCH + Duration::from_secs(right_time);
-    let left_time = UNIX_EPOCH + Duration::from_secs(left_time);
-
-
-    return TarkovTime {
-        left_time: DateTime::<Utc>::from(left_time).format("%H:%M:%S").to_string(),
-        right_time: DateTime::<Utc>::from(right_time).format("%H:%M:%S").to_string(),
-    };
-}
-
 
 struct App<APP: FnMut(Mode), QUIT: Fn()> {
     tray: TrayItem,
@@ -289,35 +146,7 @@ impl<APP, QUIT> App<APP, QUIT> where APP: FnMut(Mode), QUIT: Fn()
     }
 }
 
-struct TarkovDetector {
-    last_time: Instant,
-    is_running: bool,
-}
 
-impl TarkovDetector {
-
-    fn new() -> Self {
-        return Self {
-            last_time: Instant::now(),
-            is_running: false
-        }
-    }
-
-    fn tarkov_running(&mut self) -> bool {
-        let now = Instant::now();
-        if now.duration_since(self.last_time).as_secs() > 10 {
-           self.last_time = now;
-            let mut is_running = false;
-            for_each_process(|_id: u32, name: &Path| {
-                if name.display().to_string().contains("EscapeFromTarkov.exe") {
-                    is_running = true;
-                }
-            }).unwrap();
-            self.is_running = is_running;
-        }
-        return self.is_running;
-    }
-}
 
 
 fn main() {
